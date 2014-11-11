@@ -14,55 +14,74 @@ ANGULAR_RESOLUTION = 2
 SAMPLING_STEP_CM = 1
 
 
+class Point():
+    x = 0
+    y = 0
+
+    def __init__(self, x=0, y=0):
+        self.x = x
+        self.y = y
+
+
 def read_png(png_file_path):
     img = Image.open(png_file_path)
-    raw_data = img.tostring()
+    img = img.convert(mode='L')
+    img.show()
+    # raw_data contain every pixel row by row
+    raw_data = list(img.getdata())
 
-    data = [[0 for y in range(img.size[1])] for x in range(img.size[0])]
+    ocp_grid = [[0 for y in range(img.size[1])] for x in range(img.size[0])]
     for x in range(img.size[0]):
         for y in range(img.size[1]):
             try:
-                data[x][y] = raw_data[x * img.size[0] + y]
+                ocp_grid[x][y] = 0 if raw_data[y * img.size[0] + x] else 1
             except IndexError:
-                print("Error while writing index=", (x * img.size[0] + y), "to [x=", x, ", y=", y, "]")
+                print("Error while writing index=", (x * img.size[1] + y), "to [x=", x, ", y=", y, "]")
 
-    return data, img.size
+    return ocp_grid, img.size
 
 
-def get_deltas(h, a):
-    return m.cos(a) * h, m.sin(a) * h
+def get_deltas(hypotenuse, alpha):
+    return m.cos(m.radians(alpha)) * hypotenuse, m.sin(m.radians(alpha)) * hypotenuse
 
 
 def clamp(x, y, s):
     return max(0, min(x, s[0]-1)), max(0, min(y, s[1]-1))
 
 
-def trace_ray(o, a, d, s):
-    cx, cy = int(o[0] / PX_PER_CM), int(o[1] / PX_PER_CM)
-    dx, dy = 0, 0
-    for h in range(0, LASER_RANGE_CM, SAMPLING_STEP_CM):
-        dx, dy = get_deltas(h, a)
-        dx, dy = int(dx / PX_PER_CM), int(dy / PX_PER_CM)
-        cx, cy = clamp(cx + dx, cy + dy, s)
-        if a == 0:
-            print("cx=", cx, ", cy=", cy)
-        if d[cx][cy] > 0:
-            return h
+def point_from_cell(x, y):
+    return x * CM_PER_PIXEL, y * CM_PER_PIXEL
+
+
+def cell_from_point(x, y):
+    return int(x / CM_PER_PIXEL), int(y / CM_PER_PIXEL)
+
+
+def trace_ray(origin, alpha, ocp_grid, map_size):
+    cx, cy = cell_from_point(origin.x, origin.y)
+    for hypotenuse in range(0, LASER_RANGE_CM, SAMPLING_STEP_CM):
+        dx, dy = get_deltas(hypotenuse, alpha)
+        dx, dy = cell_from_point(dx, dy)
+        cx, cy = clamp(cx + dx, cy + dy, map_size)
+        if alpha == 0:
+            print("cx=", cx, ", cy=", cy, "d=", ocp_grid[cx][cy], "hypotenuse=", hypotenuse)
+        if ocp_grid[cx][cy] > 0:
+            return hypotenuse
     return LASER_RANGE_CM
     pass
 
 
-def get_laserscan(o, d, s):
+def get_laserscan(origin, ocp_grid, s):
     ranges = list()
-    for a in range(0, 360, ANGULAR_RESOLUTION):
-        ranges.append(trace_ray(o, a, d, s))
+    for alpha in range(0, 360, ANGULAR_RESOLUTION):
+        ranges.append(trace_ray(origin, alpha, ocp_grid, s))
     return ranges
     pass
 
 
 def main():
-    data, size = read_png(IMAGE_PATH)
-    ranges = get_laserscan((1, 1), data, size)
+    ocp_grid, size = read_png(IMAGE_PATH)
+    ranges = get_laserscan(Point(120, 200), ocp_grid, size)
     print(ranges)
     pass
 
